@@ -34,7 +34,7 @@ class Process:
         global resources
         if self.task == 1: # Add RECORD
             resources[index] = value
-            self.result = f"Process{self.id}| Updated R:{index} to V:{value}"
+            self.result = f"Process {self.id}| Updated R:{index} to V:{value}"
         elif self.task == 2: # Remove RECORD
             resources[index] = 0
             self.result = f"Process {self.id}| Reset R:{index} to V:0"
@@ -65,18 +65,26 @@ class Core:
             return timer
         else: return 0
 
-    def run(self, process=None):
+    def run(self, next_core=None):
         # this function runs a process at a given clock time (decreasing the remaining time by a unit of 1)
-        
         global clock # references the system clock variable
-        
+        global finished_processes
+
         if self.current_process == None: # if no current process exists check the queue to see if one has arrived
             if self.process_queue[0].arrival_time <= clock:
                 # if a process has arrived then set it as the current process and set the start time
-                self.current_process = self.process_queue[0]
-                self.current_process.started = True
-                self.current_process.core_used = self.id
-                self.current_process.start_time = clock
+                if next_core.current_process != None:
+                    if next_core.current_process.task in [1, 2]:
+                        self.block()
+                    elif next_core.current_process.task in [3, 4]:
+                        if self.process_queue[0].task in [1, 2]:
+                            self.block()
+                else:
+                    self.current_process = self.process_queue[0]
+                    self.current_process.started = True
+                    self.current_process.core_used = self.id
+                    self.current_process.start_time = clock
+
         if self.current_process != None:
             # check whether the process is modifying, if it is then set the resource lock to TRUE
             if self.current_process.task in [1,2]:
@@ -87,17 +95,20 @@ class Core:
                 # check if the process was modifying, if yes, the resource lock is set to FALSE
                 if self.current_process.task in [1,2]:
                     self.has_lock = False
+                    next_core.block()
                 # update the process attributes and execute the process
                 self.current_process.finished = True
                 print("\n\n")
                 self.current_process.execute()
                 self.current_process.end_time = self.current_process.start_time + self.current_process.burst_time
+                self.current_process.blocked_time = self.current_process.start_time - self.current_process.arrival_time
+                finished_processes.append(self.current_process)
                 system_status()
                 self.process_queue.pop(0)
                 # reset the current process variable to a NoneType for next process to run
                 self.current_process = None
 
-    def block(self, process=None):
+    def block(self):
         # this function increments the block time by 1 for all processes in the queue that have arrives but not started yet
         for process in self.process_queue:
             if (process.arrival_time <= clock) and process.started == False:
@@ -128,26 +139,26 @@ for process in processes:
 # Initialize the system clock to zero
 clock = 0
 
+finished_processes = []
+
 # create/clear log that we will append subsequent process data and system status to
 open("log.txt", 'w').close()
 
 # The system_status() function outputs the details of the resource list, and all started processes
 def system_status():
-    table = [["Core", "PId", "Task", "Priority", "ArrivalTime", "BurstTime", "StartTime", "EndTime", "BlockedTime", "RemainingTime"]]
+    table = [["Core", "PId", "Task", "Priority", "ArrivalTime", "BurstTime", "StartTime", "EndTime", "BlockedTime"]]
 
-    for p in processes:
-        if p.started:
-            table.append([f"Core {p.core_used}", p.id, p.task, p.priority, p.arrival_time, p.burst_time, p.start_time, p.end_time, p.blocked_time, p.remaining_time])
+    for p in finished_processes:
+        table.append([f"Core {p.core_used}", p.id, p.task, p.priority, p.arrival_time, p.burst_time, p.start_time, p.end_time, p.blocked_time])
     while len(table) < 20:
-        table.append(["-", "-", "-", "-", "-", "-", "-", "-", "-", "-"])
+        table.append(["-", "-", "-", "-", "-", "-", "-", "-", "-"])
 
     tab = PrettyTable(table[0])
     tab.add_rows(table[1:])
     max_clock = 0
-    for p in processes:
-        if p.finished:
-            if p.end_time > max_clock:
-                max_clock = p.end_time
+    for p in finished_processes:
+        if p.end_time > max_clock:
+            max_clock = p.end_time
     c_time = f"Current Time is : {max_clock}"
     print(c_time)
     print(resources)
@@ -160,6 +171,19 @@ def system_status():
 # main function to run the whole system
 def run_system():
     global clock # reference the global clock so that subsequent reassignment will update the original variable
+    
+    table = [["Core", "PId", "Task", "Priority", "ArrivalTime", "BurstTime", "StartTime", "EndTime", "BlockedTime", "RemainingTime"]]
+
+    for p in processes:
+            table.append([f"Core {p.core_used}", p.id, p.task, p.priority, p.arrival_time, p.burst_time, p.start_time, p.end_time, p.blocked_time, p.remaining_time])
+
+    tab = PrettyTable(table[0])
+    tab.add_rows(table[1:])
+    with open("log.txt", 'a') as log:
+        log.write("Process List\n")
+        log.write(f"{tab}\n\n\n")
+
+    print(tab)
 
     while True:
         cores = [core1, core2]
@@ -179,7 +203,7 @@ def run_system():
                 continue
             else: # otherwise run the current cores processes
                 if len(core.process_queue) > 0:
-                    core.run()
+                    core.run(next_core=cores[next-1])
 
         # loop through all processes and check if all are finished
         finished = 0
