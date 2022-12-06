@@ -1,7 +1,6 @@
 # CIT3002 Operating Systems  
 # Group Programming Assignment
 #   NonPre-emptive Priority Scheduling with Concurrency on 2 Cores
-# Group Members: Joel Wisdom - 2005295 , Bradley Miller - 0600952, Chevaun Bartley - 2004491 , Kymani Bucknor - 2102280
 
 # Import Python modules and packages that are needed
 from random import randint
